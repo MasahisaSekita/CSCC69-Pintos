@@ -342,17 +342,18 @@ void
 thread_set_priority (int new_priority) 
 {
   /* thread_current ()->priority = new_priority; */
-  struct thread *cur = thread_current();
-  cur->new_priority = new_priority;
+  curr->priority = new_priority;
 
-  if (list_empty(&cur->donations)) {
-    cur->priority = new_priority;
-    thread_yield();
-  } 
-  else if (new_priority > cur->priority) {
-    cur->priority = new_priority;
-    thread_yield();
+  struct list_elem *e;
+  for (e = list_begin(&curr->donations); 
+       e != list_end(&curr->donations); e = list_next(e)) {
+    struct donation *d = list_entry(e, struct donation, elem);
+    if (d->priority > curr->priority) {
+      curr->priority = d->priority;
+    }
   }
+
+  thread_yield();
 }
 
 /* Returns the current thread's priority. */
