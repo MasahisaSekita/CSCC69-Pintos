@@ -153,6 +153,6 @@ struct donation {
 };
 
 bool comp_prior(struct list_elem *a, struct list_elem *b, void *aux);
-void ready_lst_sort(void);
+//void ready_lst_sort(void);
 
 #endif /* threads/thread.h */
