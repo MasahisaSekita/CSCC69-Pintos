@@ -30,6 +30,18 @@ static void busy_wait (int64_t loops);
 static void real_time_sleep (int64_t num, int32_t denom);
 static void real_time_delay (int64_t num, int32_t denom);
 
+//Added
+static struct list sleep_lst;
+
+//Added
+static bool 
+com_wake_tick(const struct list_elem *a, 
+              const struct list_elem *b, void *aux UNUSED) {
+  struct thread *a1 = list_entry(a, struct thread, elem);
+  struct thread *b1 = list_entry(b, struct thread, elem);
+  return a1->wakeup < b1->wakeup;
+}
+
 /* Sets up the timer to interrupt TIMER_FREQ times per second,
    and registers the corresponding interrupt. */
 void
@@ -37,6 +49,8 @@ timer_init (void)
 {
   pit_configure_channel (0, 2, TIMER_FREQ);
   intr_register_ext (0x20, timer_interrupt, "8254 Timer");
+  //Added
+  list_init(&sleep_lst);
 }
 
 /* Calibrates loops_per_tick, used to implement brief delays. */
@@ -89,11 +103,24 @@ timer_elapsed (int64_t then)
 void
 timer_sleep (int64_t ticks) 
 {
-  int64_t start = timer_ticks ();
+  /* int64_t start = timer_ticks ();
 
   ASSERT (intr_get_level () == INTR_ON);
   while (timer_elapsed (start) < ticks) 
-    thread_yield ();
+    thread_yield (); */
+
+  //Added
+  if (ticks <= 0) return;
+
+  enum intr_level old_level = intr_disable(); 
+
+  struct thread *current = thread_current();
+  current->wakeup = timer_ticks() + ticks;
+
+  list_insert_ordered(&sleep_lst, &current->elem, com_wake_tick, NULL);
+  
+  thread_block(); 
+  intr_set_level(old_level); 
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -172,6 +199,18 @@ timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
   thread_tick ();
+
+  //Added
+  // Wake up threads whose time has come.
+  while (!list_empty(&sleep_lst)) {
+    struct thread *t = list_entry(list_front(&sleep_lst), struct thread, elem);
+
+    if (t->wakeup <= ticks) {
+      list_pop_front(&sleep_lst);
+      thread_unblock(t);
+    }
+    else break;
+  }
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
