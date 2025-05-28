@@ -116,6 +116,7 @@ sema_up (struct semaphore *sema)
   old_level = intr_disable ();
 
   struct thread *t;
+  sema->value++;
    
   if (!list_empty (&sema->waiters)) {
     /* list_sort(&sema->waiters, comp_prior, NULL); //Added
@@ -126,7 +127,6 @@ sema_up (struct semaphore *sema)
     thread_unblock(t);
   }
    
-  sema->value++;
   intr_set_level (old_level);
 }
 
@@ -506,7 +506,7 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED)
   ASSERT (!intr_context ());
   ASSERT (lock_held_by_current_thread (lock));
 
-  list_sort(&cond->waiters, comp_sema, NULL); //Added
+  list_sort(&cond->waiters, cond_compare, NULL); //Added
 
   if (!list_empty (&cond->waiters)) 
     sema_up (&list_entry (list_pop_front (&cond->waiters),
@@ -530,29 +530,4 @@ cond_broadcast (struct condition *cond, struct lock *lock)
    
   while (!list_empty (&cond->waiters))
     cond_signal (cond, lock);
-}
-
-//Added
-bool 
-comp_sema(struct list_elem *a, struct list_elem *b, void *aux UNUSED) {
-  struct semaphore *a1 = &(list_entry(a,
-                           struct semaphore_elem, elem))->semaphore;
-  struct semaphore *b1 = &(list_entry(b, 
-                           struct semaphore_elem, elem))->semaphore;
-  
-  int *a2 = list_entry(list_front(&a1->waiters), 
-                       struct thread, elem)->priority;
-  int *b2 = list_entry(list_front(&b1->waiters), 
-                       struct thread, elem)->priority;
-
-  if(a2 > b2) return true;
-  return false;
-}
-
-bool
-donation_cmp(const struct list_elem *a, 
-                      const struct list_elem *b, void *aux UNUSED) {
-  struct donation *da = list_entry(a, struct donation, elem);
-  struct donation *db = list_entry(b, struct donation, elem);
-  return da->priority < db->priority;
 }
