@@ -256,12 +256,13 @@ thread_unblock (struct thread *t)
   /* list_insert_ordered (&ready_list, &t->elem, comp_prior, NULL); */
   list_insert_ordered(&ready_list, &t->elem, priority_comp, 0);
 
+  t->status = THREAD_READY;
+   
   if (thread_current()!=idle_thread && 
     t->priority > thread_current()->priority) {
     thread_yield();
   }
    
-  t->status = THREAD_READY;
   intr_set_level (old_level);
 }
 
