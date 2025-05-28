@@ -102,7 +102,11 @@ struct thread
     unsigned magic;                     /* Detects stack overflow. */
 
     //Added
+    struct lock *waiting_for;
+    struct list donations;
     int64_t wakeup;
+    int new_priority;
+    
   };
 
 /* If false (default), use round-robin scheduler.
@@ -140,5 +144,14 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
+
+//Added
+struct donation {
+  struct list_elem elem;  
+  struct lock *lock;
+  int priority;
+};
+
+bool comp_prior(struct list_elem *a, struct list_elem *b, void *aux);
 
 #endif /* threads/thread.h */
