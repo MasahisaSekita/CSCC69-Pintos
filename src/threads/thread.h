@@ -152,6 +152,7 @@ struct donation {
    struct list_elem elem;
 };
 
-bool comp_prior(struct list_elem *a, struct list_elem *b, void *aux);
+bool priority_comp(const struct list_elem *a, 
+            const struct list_elem *b, void *args);
 
 #endif /* threads/thread.h */
