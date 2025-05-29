@@ -8,9 +8,7 @@
 
 >> Fill in the names and email addresses of your group members.
 
-FirstName LastName <email@domain.example>
-FirstName LastName <email@domain.example>
-FirstName LastName <email@domain.example>
+Masahisa Sekita <masahisa.sekita@mail.utoronto.ca>
 
 ---- PRELIMINARIES ----
 
@@ -19,7 +17,7 @@ FirstName LastName <email@domain.example>
 
 >> Please cite any offline or online sources you consulted while
 >> preparing your submission, other than the Pintos documentation, course
->> text, lecture notes, and course staff.
+>> text, lecture notes, and course staff. 
 
                  ALARM CLOCK
                  ===========
@@ -30,26 +28,57 @@ FirstName LastName <email@domain.example>
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+Changed struct thread added int wakeup
+
+struct thread {
+  ...
+  ...
+  ...
+  int_64 wakeup;
+}
+
+Added wakeup so each sleeping thread could check how much more time until it needed to wake up. 
+
 ---- ALGORITHMS ----
 
 >> A2: Briefly describe what happens in a call to timer_sleep(),
 >> including the effects of the timer interrupt handler.
 
+What happens is we check if enough ticks have passed and if so the functions
+terminates as enough sleep time has passed. Afterwards, we disable interrupts
+make each thread in the list of sleeping threads increment up the ticks passed.
+We add the thread back into the sleep list, block it and allow interupts once
+more. 
+
 >> A3: What steps are taken to minimize the amount of time spent in
 >> the timer interrupt handler?
+By going through a sleep_lst and simply unblocking and removing all threads that 
+have enogh time lapsed. In doing this the only time spent here is passing through
+a list of theads. 
 
 ---- SYNCHRONIZATION ----
 
 >> A4: How are race conditions avoided when multiple threads call
 >> timer_sleep() simultaneously?
+By calling and restoring interrupt disable the moment we need to increment up the
+thread ticks. By doing this threads cannot mess with each other. 
 
 >> A5: How are race conditions avoided when a timer interrupt occurs
 >> during a call to timer_sleep()?
+timer_interrupt race conditions are avoided by how we implemented timer_sleep.
+By calling interrupt disable in timer sleep we stop race conditions from occuring
+whenever timer_interrupt is called as timer_sleep finishes first then and only then 
+does timer_interrupt act. 
 
 ---- RATIONALE ----
 
 >> A6: Why did you choose this design?  In what ways is it superior to
 >> another design you considered?
+
+The reason I chose this design was its simplicity. By using a list that
+stored all sleeping threads keeping track of the time until they needed
+to wake up I could implement a non-busy wait form of sleep by using 
+thread block and interrupt handlers. 
 
              PRIORITY SCHEDULING
              ===================
@@ -60,20 +89,103 @@ FirstName LastName <email@domain.example>
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+Changed struct thread by adding: 
+struct thread {
+  ...
+  ...
+  int donated_pri; 
+  struct list donations;
+  struct list waiting;
+}
+
+donated_pri stores the priority that might be donated to the thread. 
+donations stores the list of threads that might priority donation
+waiting is a list of the waiting threads.
+
+Added new struct donation to keep track of all doanted threads
+struct donation {
+   struct thread *thread;
+   struct lock *lock;
+   int priority;
+   struct list_elem elem;
+};
+
+struct donation exists to that we can create a list of the
+threads that need to have priorities donated to them or 
+updated to or what they were originally. With this we can update and donate 
+priorities as needed.
+
+
 >> B2: Explain the data structure used to track priority donation.
 >> Use ASCII art to diagram a nested donation.  (Alternately, submit a
 >> .png file.)
+
+A thread tries to acquire a lock held by another thread.
+A donation struct is added to the thread’s waiting list of locks.
+
+If the lock owner has a lower priority, donation occurs. The donation 
+list of the lock holder is checked. If no donation exists for this lock, 
+a new donations struct is created and added.
+
+Priority donation is propagated through the dependency chain. A queue 
+(queue list) is used to traverse threads waiting on locks. If a lower-priority 
+thread is blocking a higher-priority one, its priority is updated. The 
+donation continues, ensuring priority is propagated up the chain.
+
+When a thread acquires the lock, it removes itself from the waiting list of 
+locks. This prevents unnecessary priority donations from persisting after 
+the lock is obtained.
+
+Thread A (priority 20)
+  ├── donation:
+  │      ├── [Lock L1, donated priority 20]
+  │
+  ├── waiting: (empty)
+
+Thread B (priority 10 → 20 after donation)
+  ├── donation:
+  │      ├── [Lock L2, donated priority 20]
+  │
+  ├── waiting:
+  │      ├── [Lock L1]
+
+Thread C (priority 5 → 20 after donation)
+  ├── donation: (empty)
+  ├── waiting:
+  │      ├── [Lock L2]
 
 ---- ALGORITHMS ----
 
 >> B3: How do you ensure that the highest priority thread waiting for
 >> a lock, semaphore, or condition variable wakes up first?
 
+I ensured that thte highest priority thread woke up first by making
+it so that whenever a thread is created with greater priority the 
+current thread yields. Additionally, when adding to the ready list
+I made sure it was sorted by priority.
+
 >> B4: Describe the sequence of events when a call to lock_acquire()
 >> causes a priority donation.  How is nested donation handled?
 
+When calling lock_acquire we firstly check if any of the other threads
+have the same lock. If not, we give the thread the lock. If there is a
+lock we store it in waiting. When the thread is waiting for the lock, 
+we donate the appropriate priorites and priority donation is complete.
+
+Nested donation is handled by the functions add_to_waiting_locks,
+handle_priority_donation, update_lock_holder_priority, 
+propogate_priority_donation, and update_priority_in_lock_list. 
+These functions check with eachother and sort the priority donations
+as is appropriate.
+
 >> B5: Describe the sequence of events when lock_release() is called
 >> on a lock that a higher-priority thread is waiting for.
+
+When lock_release is called the highest-priority waiting thread is 
+unblocked and runs next. The previous holder loses any priority donations 
+associated with the released lock. If it still has other donations, 
+its priority is set to the highest remaining donated priority. If no 
+donations remain, its original priority is restored.
 
 ---- SYNCHRONIZATION ----
 
@@ -81,10 +193,21 @@ FirstName LastName <email@domain.example>
 >> how your implementation avoids it.  Can you use a lock to avoid
 >> this race?
 
+The main way my implementation avoid race conditions is by using 
+locks and checking if other threads are waiting for a lock held by the 
+current thread. If there is a lock we wait until all the locks are 
+released before updating the priority to be higher.
+
 ---- RATIONALE ----
 
 >> B7: Why did you choose this design?  In what ways is it superior to
 >> another design you considered?
+
+The reason I chose this design was that it allowed me to keep track of the threads,
+their donations, and their waiting lists very precisely. Whenever I needed 
+information on how donations were propogating or what thread was waiting for what
+I could easily find it by using various print statements. The very modular design
+of my code allowed me to check when and why things were wrong very effectively.
 
 
                SURVEY QUESTIONS
